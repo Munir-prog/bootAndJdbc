@@ -2,6 +2,7 @@ package com.mprog.bootandjdbc.repository;
 
 import com.mprog.bootandjdbc.domain.Author;
 import com.mprog.bootandjdbc.domain.Book;
+import com.mprog.bootandjdbc.domain.BookResultSetExtractor;
 import com.mprog.bootandjdbc.domain.BookRowMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.ResultSetExtractor;
@@ -16,39 +17,6 @@ import java.util.*;
 @Repository
 @RequiredArgsConstructor
 public class JdbcBookRepository implements BookRepository {
-    private final static RowMapper<Book> MAPPER = (rs, num) ->
-            new Book(rs.getLong("id"),
-                    rs.getString("title"),
-                    rs.getInt("publish_year"),
-                    null);
-
-    private final static ResultSetExtractor<List<Book>> EXTRACTOR = rs -> {
-        var books = new ArrayList<Book>();
-        var authors = new HashMap<Long, Author>();
-        var currentBook = new Book(0, null, 0, null);
-        while (rs.next()) {
-            var bookId = rs.getLong("b_id");
-            if (currentBook.getId() != bookId) {
-                currentBook = new Book(bookId, rs.getString("b_title"),
-                        rs.getInt("b_publish_year"), new HashSet<>());
-                books.add(currentBook);
-            }
-
-            var authorId = rs.getLong("a_id");
-            if (authorId == 0)
-                throw new RuntimeException("no author for book " + currentBook.getId());
-            var author = authors.get(authorId);
-            if (author == null) {
-                var authorName = rs.getString("a_name");
-                author = new Author(authorId, authorName, new HashSet<>());
-                authors.put(authorId, author);
-            }
-            author.getBooks().add(currentBook);
-
-            currentBook.getAuthors().add(author);
-        }
-        return books;
-    };
 
     private final NamedParameterJdbcOperations jdbc;
 
@@ -73,25 +41,28 @@ public class JdbcBookRepository implements BookRepository {
                     LEFT JOIN authors a ON ba.author_id = a.id
                 ORDER BY b.id, a.id
                 """;
-        return jdbc.query(sql, EXTRACTOR);
+        return jdbc.query(sql, new BookResultSetExtractor());
     }
 
     @Override
     public Collection<Book> findAllByTitlePart(String part) {
-        return jdbc.query("""
-                        select
-                            b.id b_id,
-                            b.title b_title,
-                            b.publish_year b_publish_year,
-                            a.id a_id,
-                            a.name a_name
-                        from books b left join books_authors ba on b.id = ba.book_id
-                            left join authors a on ba.author_id = a.id
-                        where lower(title) like :titlePart
-                        order by b.id, a.id
-                        """,
+        String sql = """
+                SELECT 
+                    b.id b_id,
+                    b.title b_title,
+                    b.publish_year b_publish_year,
+                    a.id a_id,
+                    a.name a_name
+                FROM books b LEFT JOIN books_authors ba ON b.id = ba.book_id
+                    LEFT JOIN authors a ON ba.author_id = a.id
+                WHERE lower(title) LIKE :titlePart
+                ORDER BY b.id, a.id
+                """;
+        return jdbc.query(
+                sql,
                 Map.of("titlePart", "%" + part.strip().toLowerCase() + "%"),
-                EXTRACTOR);
+                new BookResultSetExtractor()
+        );
     }
 
     @Override
@@ -108,7 +79,7 @@ public class JdbcBookRepository implements BookRepository {
                         where b.id = :id
                         """,
                 Map.of("id", id),
-                EXTRACTOR);
+                new BookResultSetExtractor());
         if (list.isEmpty()) {
             return Optional.empty();
         } else {
