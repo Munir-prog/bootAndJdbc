@@ -2,6 +2,7 @@ package com.mprog.bootandjdbc.repository;
 
 import com.mprog.bootandjdbc.domain.Author;
 import com.mprog.bootandjdbc.domain.Book;
+import com.mprog.bootandjdbc.domain.BookRowMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowMapper;
@@ -53,23 +54,26 @@ public class JdbcBookRepository implements BookRepository {
 
     @Override
     public Collection<Book> findAllWithoutAuthors() {
-        return jdbc.query("select id, title, publish_year from books", MAPPER);
+        String sql = """
+                SELECT id, title, publish_year
+                FROM books
+                """;
+        return jdbc.query(sql, new BookRowMapper());
     }
 
     @Override
     public Collection<Book> findAll() {
-        return jdbc.query("""
-                        select
-                            b.id b_id,
-                            b.title b_title,
-                            b.publish_year b_publish_year,
-                            a.id a_id,
-                            a.name a_name
-                        from books b left join books_authors ba on b.id = ba.book_id
-                            left join authors a on ba.author_id = a.id
-                        order by b.id, a.id
-                        """,
-                EXTRACTOR);
+        String sql = """
+                SELECT b.id b_id,
+                    b.title b_title,
+                    b.publish_year b_publish_year,
+                    a.id a_id,
+                    a.name a_name
+                FROM books b LEFT JOIN books_authors ba ON b.id = ba.book_id
+                    LEFT JOIN authors a ON ba.author_id = a.id
+                ORDER BY b.id, a.id
+                """;
+        return jdbc.query(sql, EXTRACTOR);
     }
 
     @Override
@@ -93,22 +97,21 @@ public class JdbcBookRepository implements BookRepository {
     @Override
     public Optional<Book> findById(long id) {
         var list = jdbc.query("""
-                select
-                    b.id b_id,
-                    b.title b_title,
-                    b.publish_year b_publish_year,
-                    a.id a_id,
-                    a.name a_name
-                from books b left join books_authors ba on b.id = ba.book_id
-                    left join authors a on ba.author_id = a.id
-                where b.id = :id
-                """,
+                        select
+                            b.id b_id,
+                            b.title b_title,
+                            b.publish_year b_publish_year,
+                            a.id a_id,
+                            a.name a_name
+                        from books b left join books_authors ba on b.id = ba.book_id
+                            left join authors a on ba.author_id = a.id
+                        where b.id = :id
+                        """,
                 Map.of("id", id),
                 EXTRACTOR);
         if (list.isEmpty()) {
             return Optional.empty();
-        }
-        else {
+        } else {
             return Optional.of(list.get(0));
         }
     }
@@ -125,7 +128,7 @@ public class JdbcBookRepository implements BookRepository {
                         """,
                 params,
                 keyHolder);
-        book.setId((Long)(keyHolder.getKeys().get("id")));
+        book.setId((Long) (keyHolder.getKeys().get("id")));
         insertAuthors(book);
     }
 
